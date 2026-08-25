@@ -13,18 +13,31 @@
 re-implement it.** An earlier plan listed it as "the next major task"; that
 plan is stale.
 
-The next task is **deployment**, then the two open content conflicts:
+The mobile performance baseline is **done** (§3A), **P0-2 (the idle floor) is
+fixed and verified**, and the **`SectionBigTitle` mount measurement is fixed
+and verified** (§3B). The next task is **framer-motion's `useScroll` offset
+walk**, then the theme toggle, then the two open content conflicts:
 
-1. **Deploy to Vercel.** There is still **no git repository** in this
-   directory. Full step-by-step instructions were given verbally last
-   session; the short version is in §16. Nothing in the code blocks this.
-2. **DevTown duration conflict.** `src/data/experience.ts` says
+1. **framer-motion `useScroll` - now the largest named forced-reflow
+   contributor on a cold load.** **16 instances** initialise in the same
+   mount: 7 `SectionBigTitle` + 7 `useConnectedScroll` + Hero +
+   `ExperienceTimeline`, each walking `offsetLeft`/`offsetTop` up the
+   `offsetParent` chain. Measured **497ms -> 366ms** of forced reflow after
+   the `SectionBigTitle` fix, i.e. it inherited attribution rather than
+   shrinking. Investigate whether those walks are genuinely needed during the
+   critical initial render window, or can be batched/deferred. Isolated
+   experiment, fresh cold-load before/after, **two runs per side** (§3A).
+2. **Theme toggle `readColors` forced reflow** - confirmed, not yet fixed.
+   See §3B.
+3. **Deploy to Vercel.** The git repository now exists with an `origin/main`
+   remote. The short version of the deploy steps is in §16.
+4. **DevTown duration conflict.** `src/data/experience.ts` says
    `period: "3 Months"` and `role: "Software Development Intern"`. Mukul's own
    DevTown certificates (rendered in `public/certificates/`) say **May 2024 to
    Sep 2024**, "5-months internship", **Full Stack Web Developer**. A visitor
    can open the certificate from the Certifications section and see the
    mismatch. This is Mukul's claim to resolve - do not silently rewrite it.
-3. **About duplicates Certifications.** `src/sections/About.tsx` still renders
+5. **About duplicates Certifications.** `src/sections/About.tsx` still renders
    the old plain-text `certifications` list from `src/data/site.ts`. It now
    duplicates the real Certifications section and includes "Backend Web
    Development Bootcamp - ShapeAI", for which no certificate file exists.
@@ -128,6 +141,9 @@ skill.
 **Playwright MCP is configured and is the primary verification tool.** Every
 claim in this document about behaviour was measured through it.
 
+**Chrome DevTools MCP is configured and is the primary *performance* tool.**
+The two servers are complementary, not alternatives — see §3A.
+
 ### Harness caveat that will waste your time if you forget it
 
 In this Playwright-driven Chrome, `requestAnimationFrame` idles at roughly
@@ -141,6 +157,308 @@ loop pumps them. Consequences:
 - Playwright's synthetic mouse reports `(pointer: fine)`. To exercise touch
   code paths, override `matchMedia` in an `addInitScript` so
   `(pointer: fine)` returns `false`.
+
+---
+
+## 3A. Browser MCP Servers - Which One, and When
+
+Two browser MCP servers are configured. **They are complementary. Pick by the
+question you are asking, and do not run overlapping sessions through both** -
+each spawns its own Chrome instance, and two live browsers competing for CPU
+makes any measurement taken in either one worthless.
+
+| Server | Use it for |
+|---|---|
+| **Playwright MCP** | Functional and interaction testing: clicks, touch, drag, swipe, navigation, form flows, regression sweeps, screenshots, console errors, overflow checks. |
+| **Chrome DevTools MCP** | Performance only: profiling, animation debugging, long-task analysis, rendering/paint/layout bottlenecks, CPU and network throttling, frame analysis. |
+
+Chrome DevTools MCP is **configured locally and is not part of this git
+repository** - a fresh clone will not have it. Configured command:
+
+```
+npx -y chrome-devtools-mcp@latest --isolated
+```
+
+`--isolated` means each run gets a **fresh browser profile**, so no extension,
+cache or previous-session state contaminates a trace.
+
+### The measurement rule that supersedes earlier work in this document
+
+**Do not treat Playwright `requestAnimationFrame` sampling as authoritative
+for animation smoothness.** Every rAF/`getComputedStyle` timing figure in this
+file was taken under browser automation, where the frame loop is throttled and
+backgrounding behaviour distorts it (§3). Those numbers were good enough to
+prove *ordering* and *interpolation continuity*, and they are still fine for
+that. They are not evidence about frame rate, jank or smoothness - §4's own
+note that "frame-level smoothness cannot be measured in this sandbox" was
+correct, and Chrome DevTools MCP is the answer to it.
+
+For anything about frames, use `performance_start_trace` /
+`performance_stop_trace` and `performance_analyze_insight`, so the conclusion
+comes from Chrome's real trace data rather than from sampled style reads.
+
+### Session hygiene - the rule that invalidated a whole round of findings
+
+**A performance baseline must be recorded in a fresh browser session.** This is
+not a nicety. An entire set of "severe" findings - avatar follow at 11 long
+tasks, menu close at 6, the project card committing 6 frames in 1.5s, a card-
+close CLS of 0.26, and a 90%-busy idle - turned out to be **artifacts of one
+long-lived renderer** that had already run the intro, a modal cycle and a
+synthetic touch-stress loop. Re-measured on the *same unmodified code* in a
+fresh session, every one of them was fine.
+
+The tell was unmissable once looked for: the same synthetic touch driver
+delivered **40 samples per 3s** in the degraded session and **131** in a fresh
+one, on identical code. If an input-driven measurement changes by 3x between
+sessions, the session is the variable.
+
+Rules that follow:
+
+- **Establish every baseline from a fresh browser session and a fresh
+  document.** `new_page` with an `isolatedContext`, then reload; do not reuse
+  the tab that has been driving the last twenty traces.
+- **Never treat a stress-tested, long-lived renderer as authoritative.** It
+  degrades, and it degrades in exactly the direction that makes code look
+  guilty.
+- **Reproduce anything surprising in a clean session before changing code.**
+  A number that implies a serious bug is a reason to re-measure, not a reason
+  to start editing.
+- **Synthetic touch sample rates are a property of the session, not the
+  device.** They are not comparable to real hardware input rates and must not
+  be reported as if they were.
+- **Before/after comparisons must both be fresh.** Stash the change, rebuild,
+  re-measure the baseline under the same conditions, restore. Comparing a new
+  build in a fresh session against an old number from a tired one measures the
+  session.
+- **Watch the trace window for harness contamination.** Calling
+  `evaluate_script` *inside* a running trace installs MCP's
+  `waitForStableDom` observer, which showed up as 155 callbacks / 64ms of
+  someone else's work. Scroll and set up state *before* starting the trace, or
+  pass `waitForStableDom: false`.
+- **Short windows lie about anything periodic.** Idle main-thread busy at Hero
+  sampled 79% / 69% / 81% across three 3s runs purely because of where the
+  window landed in the typewriter's type/hold cycle. Use a 9s window, or
+  measure a condition where the periodic work is off.
+
+### Recommended mobile performance workflow
+
+1. `npm run dev`, and confirm which port actually answered (§13.1).
+2. Emulate a representative mobile viewport, starting at **390x844**.
+3. Apply **CPU throttling** representative of a mid-range Android before
+   investigating anything animation-sensitive. An unthrottled desktop hides
+   every bottleneck that matters here.
+4. **Record a trace while reproducing the real interaction** - not while idle,
+   and not around a synthetic approximation of the gesture.
+5. Analyse: long tasks, rendering / paint / layout work, animation and
+   compositor issues, frame performance.
+6. **Change only the specific bottleneck the trace names.** No opportunistic
+   refactoring alongside it.
+7. Re-run the *same* trace after the fix and compare against the baseline.
+8. Verify on a **real mobile device** last. Emulation plus CPU throttling
+   cannot reproduce Mukul's actual Oppo device.
+
+---
+
+## 3B. Performance Findings - Verified Status
+
+**Every number here was recorded in a fresh session** (§3A) on a production
+build (`vite build --minify false`, served by `vite preview`), at 390x844,
+DPR 3, mobile+touch, CPU 4x. Figures are 4x-throttled; that band is the
+closest available analogue to a mid-range Android.
+
+### DONE - P0-2, the idle performance floor
+
+Two changes, measured independently.
+
+**P0-2a - `useTypewriterCycle`. A proven improvement; keep it.**
+The chain had no terminal state and no visibility gate, so it re-rendered a
+React component every 28-55ms for the entire visit, including while the
+visitor was reading Architecture or Contact. It is now suspended when the text
+is off screen or the tab is hidden, resuming at the exact position it stopped
+(the chain carries its position in `step`'s arguments, so pausing is holding
+the next thunk instead of scheduling it), and `setDisplay` is guarded with
+`prev === next` because the type→hold→delete boundary emitted the same string
+twice. Measured, fresh both sides, 3s:
+
+| | Hero visible | Scrolled to Projects |
+|---|---|---|
+| React renders | 40 → **20** | 34 → **0** |
+| React time | 86ms → 35ms | 52ms → **0ms** |
+| `Layout` | 122ms → 103ms | 116ms → **73ms** (-37%) |
+| Main-thread busy | 79% → 69% | 77% → 67% |
+
+**React work is exactly zero once Hero is off screen.** No timing constant,
+word, or markup changed; typing/deleting/cycling verified before measuring.
+
+**P0-2b - `FrameDriver`. A scheduling cleanup, NOT a proven performance win.**
+`FrameDriver` re-armed `requestAnimationFrame` unconditionally, so it was a
+*second* permanent 60Hz rAF whose only job was to throttle down to
+`TOUCH_FPS`: 177 callbacks per 3s producing 89 invalidations. It is a
+`setInterval` now, with a `document.hidden` guard replacing what rAF gave for
+free. `invalidate()` only marks the canvas dirty - r3f's own rAF still draws
+on the next vsync - so rate and vsync alignment are unchanged (verified: r3f
+`loop` runs 281x/9s = 31/s, exactly `TOUCH_FPS`, before and after).
+
+Measured over 9s at Hero: **rAF 1877 → 1337 (-29%), main-thread busy 7091ms →
+7105ms (unchanged).** The removed callbacks were cheap. **Do not describe this
+as a performance improvement.** It removes a genuine duplicate scheduler and
+costs nothing visually; that is the whole claim.
+
+**The r3f scene does not sleep while visible, and must not.** `AvatarHead`'s
+`useFrame` animates `position.y = sin(clock.elapsedTime * 0.9) * 0.06`
+continuously, so there is no "nothing changed" frame. The avatar is
+`position: fixed`, 164x164, `opacity: 1`, `visibility: visible` at **every**
+scroll offset - verified with `getBoundingClientRect` at Projects. It is a
+site-wide visible companion, not an invisible scene burning frames. It sleeps
+only behind a modal (`frameloop="never"`) and now in a backgrounded tab.
+
+**HeroBackground's visibility gate already works** - `step` goes from 177
+calls to **0** when Hero scrolls off. Nothing to fix there.
+
+### DONE - `SectionBigTitle` mount measurement
+
+**A confirmed contributor-level improvement, with a deliberately bounded
+claim about the whole load.**
+
+Seven instances each read `offsetWidth`/`clientWidth` in their own
+`useLayoutEffect`. React interleaves DOM mutation with those effects, so every
+read landed on a freshly invalidated document and forced its own layout -
+seven forced layouts, plus seven independent `document.fonts.ready` handlers
+firing a second storm, plus seven `setEntryScale` render passes.
+
+The fix is in `SectionBigTitle.tsx` only:
+
+- **One module-level batched pass.** All instances register; one pass reads
+  every geometry value back to back (only the first read pays for a layout)
+  and only then writes. One forced layout instead of seven.
+- **The pre-paint guarantee is preserved, not traded away.** Still
+  `useLayoutEffect`; the batch flushes via `queueMicrotask`, which drains as
+  the commit's stack unwinds - after all seven layout effects, **before
+  paint**. This is deliberately *not* a move to `useEffect`.
+- **`entryScale` is a `MotionValue`, not React state.** Seven render passes
+  become zero.
+- **One shared `ResizeObserver`** on each heading and container replaces both
+  the seven `resize` listeners and the seven `document.fonts.ready` handlers:
+  the shrink-wrapped heading's own box is what changes on a font swap *and* on
+  a column resize, so one instrument covers both, off the critical path.
+
+Measured, **two cold runs per side, a fresh isolated context each**:
+
+| | Before | After |
+|---|---|---|
+| `SectionBigTitle measure` forced reflow | **896 / 878ms** | **absent** |
+| replacement (`flushMeasurements`) | - | **14.8 / 13.4ms** |
+| Total forced reflow | 820 / 806ms | **690 / 701ms** |
+| framer `useScroll measure` reflow | 497ms | 366ms |
+| Batched passes per cold load | - | 3 (mount, RO delivery, font swap) |
+
+**What this does NOT claim.** Total forced reflow fell only ~16%, not ~890ms:
+the work partly *moved*, with framer's `useScroll` and
+`useNodeGeometry.measure` absorbing attribution `SectionBigTitle` used to
+take. Largest task, long-task count, Layout, Style, Paint, LCP and
+commits-under-2s all sit **within run-to-run noise**. **No claim is made that
+the intro renders earlier** - first commit moved 440/395ms -> 316/86ms, but
+n=2 with an outlier is not evidence.
+
+Verified visually: all seven headings measure exactly the pre-change formula
+at 390 *and* 1440 (including the clamped ones - Certifications 1.446,
+Architecture 1.691 at 390); all settle to scale 1 / opacity 1; a desktop
+resize re-measures all seven through the ResizeObserver; the intro's
+dots-to-avatar formation, typed caption, arrow and transition into the site
+are unchanged; no horizontal overflow; 0 console errors.
+
+---
+
+### CONFIRMED - still open
+
+**framer-motion `useScroll`: the largest named forced-reflow contributor on a
+cold load.** 16 instances initialise in one mount, each walking
+`offsetLeft`/`offsetTop` to `offsetParent`. Measured 497ms -> 366ms after the
+`SectionBigTitle` fix - it inherited attribution rather than shrinking. See
+§0.1. Not yet investigated; next isolated experiment.
+
+**Theme toggle: seven full-document style recalculations, one of them forced.**
+Fresh session, 2s window: `UpdateLayoutTree` totals **892ms** across recalcs
+of 75 / 107 / **172** / 106 / 101 / 133 / 104ms; 6 long tasks; 88% busy.
+`ForcedReflow` names `readColors @ HeroBackground.tsx:34` at **172ms** - its
+`MutationObserver` on `data-theme` calls
+`getComputedStyle(document.documentElement)` in the microtask right after the
+attribute flip, forcing a synchronous recalc on top of the one the browser was
+already going to do. `IntroParticles.readColor` has the identical pattern.
+(`startThemeReveal`'s 75ms is the knob's `getBoundingClientRect` - small,
+legitimate, leave it.)
+*Correction:* an earlier note said "three recalcs"; it is seven. Only the
+first three were visible at the top level of that trace.
+*Assumption, not measured:* fixing `readColors` would recover ~172ms. The
+other six are the `data-theme` flip invalidating 855+ var-driven elements and
+would remain.
+
+### PARTIALLY CONFIRMED
+
+**Architecture, Kafka focused: real paint cost, no actual jank.**
+Worst case reproduces exactly - 15 dash-flow + 30 particles, **49 running
+animations**. Paint is genuinely attributable to this section: **293ms across
+306 paint events per 3s**, against **0ms / 0 events** when idle away from Hero.
+That is the `stroke-dashoffset` cost §9 predicted, and it is real.
+
+But it renders fine: **152 frames in 3s, median 18.0ms, zero long tasks**,
+88% busy. **Do not optimise it on this evidence.**
+*Correction:* an earlier note claimed Architecture triples per-frame
+`Layerize`. It does not - 4.0ms per event here against 3.6ms per event at
+scrolled-away idle. Layerize is a page-wide background cost, not this
+section's doing.
+
+### DISPROVEN
+
+**Card close CLS 0.26 - does not reproduce.** Zero `LayoutShift` events in a
+fresh session; no `CLSCulprits` insight generated at all. The original shift
+(score 0.2569) impacted `SECTION#projects` with its rect widening 472 → 488,
+i.e. ~13 CSS px - a scrollbar appearing. In a fresh mobile session
+`innerWidth === clientWidth === 390` and `body padding-right: 0px` both before
+and during the open modal, with `overflow: hidden` and `data-modalOpen` set
+correctly: there is no classic scrollbar to compensate for, so nothing shifts.
+*Not disproven for desktop* - `useModalBehavior`'s padding compensation simply
+was not exercised here, and no desktop trace was taken.
+
+### Session artifacts - NOT optimization targets
+
+The following were reported as severe and are **not code behaviour**. They came
+from one long-lived renderer that had already run the intro, a modal cycle and
+a synthetic touch-stress loop (§3A). Re-measured on the *same unmodified code*
+in a fresh session:
+
+| Interaction | Reported (degraded) | Fresh, same code |
+|---|---|---|
+| Avatar follow, 3s | 93% busy, 56 frames, med 46.3ms, **11 long tasks** | 84%, **179 frames, med 16.4ms, 0 long** |
+| Menu close, 1.5s | 86%, 26 frames, med 39.7ms, **6 long tasks** | 92%, **74 frames, med 17.7ms, 0 long** |
+| Card open, 1.5s | 66%, **6 frames**, med 98.8ms, **5 long tasks** | 90%, **64 frames, med 20.6ms, 0 long** |
+| Idle at Hero, 3s | 90% busy, 69 frames, med 36.8ms | 79%, 179 frames, med 16.7ms |
+
+**Avatar follow and menu close are smooth and are not bottlenecks.** Card open
+was already fine and improved further after P0-2 (busy 90% → 77%, frames
+64 → 72, median 20.6 → 17.7ms, Style 284 → 248ms, Layout 78 → 56ms, Paint
+46 → 32ms) - it was the interaction most starved by idle work, as predicted.
+
+**The "8892ms initial mount" was also a session artifact.** It was reported as
+one `RunTask` of 8892ms containing a single `Layout` of 3384ms with **5 frame
+commits in 14 seconds**, and described at the time as a fresh load. It was a
+*reload* - the document was new, the **browser was the degraded one**. A
+genuine cold load in a fresh isolated context, two runs:
+
+| | Reported | Fresh cold load |
+|---|---|---|
+| Largest task | 8892ms | **373 / 331ms** |
+| Largest single `Layout` | 3384ms | **8 / 13ms** |
+| Frame commits in trace | 5 in 14s | **1388 / 1401** |
+
+**There is no monolithic mount task.** What was real is the forced-reflow
+attribution, and that is what the `SectionBigTitle` fix above addressed.
+
+A reload is not a cold load, and it is not proof of a fresh browser. To
+measure a real first visit: fresh isolated context on `about:blank`, start the
+trace, *then* navigate.
+
+Do not reopen any of these on the strength of the old numbers.
 
 ---
 
@@ -213,7 +531,12 @@ which silently beats an inherited `none`).
   - `never` while a project modal is open,
   - `demand` on a coarse pointer, driven by `FrameDriver` at `TOUCH_FPS = 32`
     (one throttled loop instead of an unbounded one — the scene is a slow idle
-    float plus smoothed tracking, nothing in it needs 60fps),
+    float plus smoothed tracking, nothing in it needs 60fps). **`FrameDriver`
+    is a `setInterval`, not a rAF loop, and must stay one** — as a rAF it was
+    a second permanent 60Hz loop whose only job was to throttle to 32fps.
+    `invalidate()` only marks the canvas dirty; r3f's own rAF still draws on
+    the next vsync, so the rate is unchanged. The `document.hidden` guard
+    replaces what rAF gave for free. See §3B,
   - `always` on desktop, unchanged.
 - **The modal signal.** `useModalBehavior` sets
   `documentElement.dataset.modalOpen`; `observeModalOpen` in `pointerTracking`
@@ -351,8 +674,14 @@ collapse.
 The opening is untouched by all of this and must stay that way — re-measured
 after the close rework: `0.70 → 1.051 → 0.977 → 1.009 → 1.000`, items visible.
 
+**Measured status: menu close is fine.** A fresh-session trace records 74
+frames in 1.5s at a 17.7ms median with **zero long tasks** (§3B). An earlier
+profiling pass reported it as the expensive phase with 6 long tasks; that was
+a degraded renderer, not this code. Do not rewrite the close for performance.
+
 Harness note, and it matters for anyone trying to verify this: **frame-level
-smoothness cannot be measured in this sandbox.** rAF runs at roughly 14fps
+smoothness cannot be measured by sampling `getComputedStyle` in this
+sandbox** — use a Chrome DevTools trace (§3A). rAF runs at roughly 14fps
 here even with a pump loop, so sampling `getComputedStyle` produces gaps that
 look exactly like stutter — a naive read gave a 31x "velocity spike" that was
 purely a sampling artifact. Measured overall timing here even reports the
@@ -659,9 +988,16 @@ with dots streaming over it. Dashed, its static dashes sat under the moving
 ones and read as two separate lines.
 
 Cost, worst case (Kafka focused, the whole fabric lit): 15 dash-flow
-animations plus 30 particle nodes. `offset-distance` resolves to a transform,
-but `stroke-dashoffset` is a paint-level property — if the event fabric ever
-gets slow on a low-end phone, that is the thing to cut first.
+animations plus 30 particle nodes, 49 running animations. `offset-distance`
+resolves to a transform, but `stroke-dashoffset` is a paint-level property —
+if the event fabric ever gets slow on a low-end phone, that is the thing to
+cut first.
+
+**Measured: it costs real paint but does not currently jank.** Fresh session,
+390x844, 4x CPU: **293ms of paint across 306 events per 3s** (against 0ms when
+idle away from Hero — so the paint is genuinely this section's), but **152
+frames in 3s at an 18.0ms median with zero long tasks**. See §3B. Leave it
+alone until a trace says otherwise.
 
 ### The keyframes MUST live at top level, never inside `@theme`
 
@@ -971,7 +1307,8 @@ measuring first.**
 ## 12. Testing Expectations
 
 Verify in a real browser through Playwright MCP. Measure; do not assert from
-reading code alone.
+reading code alone. **Performance claims go through Chrome DevTools MCP
+instead - see §3A for which server answers which question.**
 
 - **Desktop 1440**: cursor/avatar, theme toggle both directions, project
   cards, navbar drag, certificate lightbox.

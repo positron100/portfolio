@@ -87,28 +87,35 @@ export default function DeveloperAvatarScene({
 /**
  * Drives a `frameloop="demand"` canvas at a fixed rate.
  *
- * One rAF that asks r3f to render only when enough time has passed. Mounted
+ * A timer that asks r3f to render only when enough time has passed. Mounted
  * only while the canvas is on demand, so on desktop it does not exist and on
  * a covered canvas it is unmounted along with everything else.
+ *
+ * **It must not be a rAF loop.** It was one, and that made it a *second*
+ * permanent 60Hz rAF whose only job was to throttle down to TOUCH_FPS: it
+ * ran 177 times per 3s and called `invalidate()` on 89 of them, so half its
+ * callbacks existed purely to compare a timestamp and re-arm. r3f already
+ * runs its own rAF for the render itself, so the page was scheduling twice
+ * for one throttled frame. Measured at 390x844 / 4x CPU: 127.5ms per 3s.
+ *
+ * A timer costs nothing in the gaps and loses nothing, because `invalidate()`
+ * does not render — it only marks the canvas dirty, and r3f's own rAF still
+ * does the drawing on the next vsync. Vsync alignment is therefore unchanged,
+ * and so is the rate.
+ *
+ * The `document.hidden` guard replaces what rAF used to give for free: rAF
+ * stops in a backgrounded tab, timers do not, and rendering a canvas nobody
+ * is compositing is exactly the work this whole component exists to avoid.
  */
 function FrameDriver({ fps }: { fps: number }) {
   const invalidate = useThree((state) => state.invalidate);
 
   useEffect(() => {
     const interval = 1000 / fps;
-    let raf = 0;
-    let last = 0;
-
-    function tick(now: number) {
-      if (now - last >= interval) {
-        last = now;
-        invalidate();
-      }
-      raf = requestAnimationFrame(tick);
-    }
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) invalidate();
+    }, interval);
+    return () => window.clearInterval(timer);
   }, [fps, invalidate]);
 
   return null;
