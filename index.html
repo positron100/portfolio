@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#0b0d10" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Mukul Negi | Software Developer &amp; Backend Engineer</title>
+    <meta
+      name="description"
+      content="Mukul Negi is a backend-focused Software Developer specializing in Java, Spring Boot, microservices, REST APIs, payment integrations, and financial technology systems."
+    />
+    <meta name="author" content="Mukul Negi" />
+    <meta
+      name="keywords"
+      content="Mukul Negi, Software Developer, Backend Engineer, Java, Spring Boot, Microservices, REST API, FinTech, Payment Integration"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Mukul Negi | Software Developer & Backend Engineer" />
+    <meta
+      property="og:description"
+      content="Backend-focused Software Developer building scalable systems, APIs, microservices, and financial technology integrations."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Mukul Negi | Software Developer & Backend Engineer" />
+    <meta
+      name="twitter:description"
+      content="Backend-focused Software Developer building scalable systems, APIs, microservices, and financial technology integrations."
+    />
+
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,321 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #fafaf9;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #f4f4f5;
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --fg-faint: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-fg: #fbfbfc;
+  --accent-soft: #eef0fd;
+  /* Secondary — deliberately adjacent to the primary indigo (not a random
+     extra hue), used sparingly: the Hero's typed-role accent, and to mark
+     personal projects apart from professional case studies. */
+  --accent-secondary: #8b5cf6;
+  --accent-secondary-soft: #f2edfe;
+  --shadow-color: 220 20% 10%;
+}
+
+[data-theme="dark"] {
+  --bg: #0a0b0c;
+  --bg-elevated: #131614;
+  --bg-subtle: #171a18;
+  --fg: #ededf0;
+  --fg-muted: #a1a5ad;
+  --fg-faint: #5b5f68;
+  --border: #23272a;
+  --border-strong: #313634;
+  /* Black + green: a technical, terminal-adjacent accent instead of the
+     light theme's indigo — kept to an accent role, not a neon wash. */
+  --accent: #3ecf8e;
+  --accent-strong: #5eeaa8;
+  --accent-fg: #06120c;
+  --accent-soft: #10241a;
+  --accent-secondary: #2dd4bf;
+  --accent-secondary-soft: #0d211f;
+  --shadow-color: 150 40% 2%;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-accent-secondary-soft: var(--accent-secondary-soft);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --animate-fade-up: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-marquee: marquee 32s linear infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* A real editor caret: hard on/off, not a fade. Held on slightly longer
+     than off, which is what stops a slow blink reading as a flicker. */
+  @keyframes caret-blink {
+    0%,
+    55% {
+      opacity: 1;
+    }
+    56%,
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Architecture connection flow.
+
+   TOP LEVEL, NOT INSIDE `@theme`. This is load-bearing and was a real bug:
+   Tailwind v4 tree-shakes `@keyframes` declared inside `@theme`, emitting one
+   only when an `--animate-*` theme variable references it or when its name
+   appears in an `animate-[...]` utility. Both of these are applied from an
+   inline React `style={{ animation: ... }}` in `ConnectionLayer.tsx`, which
+   Tailwind never scans — so it dropped them from the build entirely. The
+   elements still carried `animation: arch-travel ...` and computed style still
+   read `running`, but the keyframes did not exist, so nothing ever moved and
+   `document.getAnimations()` returned none for them. Verified by grepping the
+   built CSS: only `caret-blink` (used via `animate-[caret-blink_...]`) and
+   Tailwind's own `pulse` survived.
+
+   If either of these ever needs to move back into `@theme`, it must gain an
+   `--animate-*` variable and be applied as a utility class, not inline.
+   --------------------------------------------------------------------------- */
+
+/* Packets and events travelling along an architecture connection. Drives
+   `offset-distance`, which resolves to a transform, so this stays off the
+   layout and paint path. Skipped under reduced motion by the global block
+   further down, and the particles are not rendered at all in that case. */
+@keyframes arch-travel {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* The dashes on an event path streaming toward their destination.
+   One dash period is exactly 8 user units (`stroke-dasharray: 1 7`), so
+   travelling exactly -8 lands the pattern precisely back on itself — the loop
+   is seamless and there is no frame where the dots jump or the line appears to
+   reset. Negative because a decreasing dash offset moves the pattern *along*
+   the path, and every architecture path is built from its source to its
+   destination, so this is direction-correct for every edge without a per-edge
+   flag. */
+@keyframes arch-dash-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+
+/* Default every border to the theme token — but from `base`, not unlayered.
+   Unlayered CSS outranks anything in `@layer utilities` regardless of
+   specificity, so as a bare `*` rule this silently beat every explicit
+   `border-*` utility in the codebase: `focus:border-accent`,
+   `hover:border-border-strong`, even the contact form's `border-red-500`
+   error state. Those all render as authored now. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Colours for the opening sequence's circular reveal edge (IntroOverlay).
+   Derived from the theme's own accent pair, so they resolve to an
+   indigo→violet band in light and a green→teal one in dark without either
+   value being hardcoded or duplicated per theme. Used only by the intro
+   overlay, which unmounts once the site is revealed — nothing here affects
+   page colours, the theme system, or the theme toggle. */
+:root {
+  --intro-reveal-edge: color-mix(in oklab, var(--accent) 42%, transparent);
+  --intro-reveal-wash: color-mix(in oklab, var(--accent-secondary) 14%, transparent);
+}
+
+/* No `border-radius` here: it was intended to round the outline, but it
+   overrides the *element's* own radius (this rule is unlayered, so it beats
+   any `rounded-*` utility) — every focused pill button and rounded input
+   squared off to 2px corners the moment it took focus. Browsers already
+   follow the element's own border-radius when drawing the outline, so the
+   declaration only ever did harm. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Text entry fields opt out of the global ring and carry their own focus
+   treatment instead (an accent border plus a faint accent wash — see
+   ContactForm.tsx), which reads as part of the field rather than a
+   rectangle floating 3px off it.
+   This rule has to live here, not as a Tailwind `outline-none` utility on
+   the input: the rule above is unlayered, and unlayered CSS beats anything
+   in `@layer utilities` no matter the specificity, so the utility silently
+   lost and every focused field drew a 2px accent rectangle. Matching that
+   rule's specificity (`:where()` contributes none) and coming later in the
+   same layer-less block is what actually wins. */
+:where(input, textarea, select):focus-visible {
+  outline: none;
+}
+
+/* Smooth theme transition, scoped to avoid animating layout/transform.
+   `*` (not a fixed tag list) so it covers every element that can carry
+   theme-driven color — headings/spans/paragraphs/lists included. A fixed
+   tag list here previously missed them, and any of those mid-fading at
+   the instant the View Transition snapshot is captured bakes a wrong,
+   half-blended color into the frozen snapshot for the whole reveal. */
+* {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    fill 0.25s ease,
+    stroke 0.25s ease;
+}
+
+/* While a circular reveal is in flight, the real (hidden) DOM must snap to
+   its destination colors instantly — otherwise this transition can still be
+   mid-fade the moment the View Transition snapshot is captured, and the
+   leftover blend pops visibly once the snapshot is torn down at the end.
+   Must match the `*` selector above exactly. */
+html[data-theme-transition] * {
+  transition: none;
+}
+
+/* Circular theme reveal: browser default cross-fade is disabled so the only
+   motion is the clip-path circle driven manually in useTheme.ts. The UA
+   stylesheet also puts its own transform/size animation on
+   ::view-transition-group(root) (not just -old/-new) — left alone, it can
+   independently resize/shift the whole clipped layer, which reads as a
+   chunk of the page (or the entire viewport) jumping to the destination
+   theme ahead of where the clip-path circle has actually reached.
+   Disabling it here removes that second, competing animation entirely. */
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Entering dark: the incoming (new) layer grows from the toggle, on top. */
+html[data-theme-transition="to-dark"]::view-transition-old(root) {
+  z-index: 1;
+}
+html[data-theme-transition="to-dark"]::view-transition-new(root) {
+  z-index: 2;
+  /* Starts collapsed at the toggle instead of the UA default (unclipped) —
+     see the comment on startThemeReveal for why this matters. */
+  clip-path: circle(0px at var(--reveal-x, 50%) var(--reveal-y, 50%));
+}
+
+/* Entering light: the outgoing (old, dark) layer shrinks back into the
+   toggle, on top — reads as darkness retracting, not light expanding. */
+html[data-theme-transition="to-light"]::view-transition-old(root) {
+  z-index: 2;
+  /* Starts fully covering the viewport from the same origin, for symmetry
+     with the to-dark case above (150vmax safely exceeds any diagonal). */
+  clip-path: circle(150vmax at var(--reveal-x, 50%) var(--reveal-y, 50%));
+}
+html[data-theme-transition="to-light"]::view-transition-new(root) {
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.container-px {
+  padding-left: max(1.25rem, env(safe-area-inset-left));
+  padding-right: max(1.25rem, env(safe-area-inset-right));
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* The project modal's native scrollbar is hidden entirely — a centered
+   down-arrow affordance (ProjectDetailsModal) replaces it, since a
+   rectangular scrollbar breaks the squircle modal's rounded symmetry.
+   Scrolling itself is untouched; only the bar's rendering is suppressed. */
+.modal-scroll {
+  scrollbar-width: none;
+}
+
+.modal-scroll::-webkit-scrollbar {
+  display: none;
+}
