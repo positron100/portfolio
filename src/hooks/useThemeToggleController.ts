@@ -21,6 +21,13 @@ const FLICK_VELOCITY_PX_MS = 0.55;
 // target and the value actually applied to the reveal/knob each frame —
 // small enough to feel directly responsive, large enough to absorb jitter.
 const SMOOTHING_TAU_MS = 40;
+// Mirrors `KNOB_TRAVEL_PX` in ThemeToggle.tsx — the knob's own `x` transform
+// range. Kept local rather than imported to avoid a component→hook import.
+const KNOB_TRAVEL_PX = 22;
+
+function clampUnit(v: number) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
 
 interface Sample {
   x: number;
@@ -60,18 +67,49 @@ export function useThemeToggleController(
 
   /**
    * Measured fresh at the start of every gesture, never cached and never
-   * stored between them.
+   * stored between them. Returns a viewport-relative point — the same space
+   * the reveal's `clip-path` circle is resolved in.
    *
-   * `getBoundingClientRect` is viewport-relative, which is the same space the
-   * reveal's `clip-path` circle is resolved in — so this stays correct after
-   * any amount of scrolling, and there is no document/viewport mix to get
-   * wrong. It also picks up the knob's live `x` transform, so a drag that is
-   * already part-way across opens from where the thumb actually is.
+   * It must NOT use `getBoundingClientRect` on the knob directly. On mobile
+   * the toggle lives inside the nav menu panel, which is still running its
+   * open spring (an under-damped `scaleY` overshoot, plus the menu item's own
+   * `y`/`scale`) for ~400ms after it opens. `getBoundingClientRect` folds
+   * every ancestor transform into its result, so a tap during that window
+   * measured a distorted point and the reveal opened from the wrong place —
+   * which is exactly why the origin was correct on desktop (toggle has no
+   * animated ancestor) and inconsistent on mobile.
+   *
+   * `offsetLeft`/`offsetTop` are layout values that transforms never touch
+   * (the same property `LiquidIndicator` relies on for the same reason), so
+   * the knob's untransformed box is summed up the `offsetParent` chain and
+   * anchored to the `<header>`'s rect — the header is `position: fixed` and
+   * never transformed, so its rect is reliable at any scroll offset. The
+   * knob's own live `x` transform is added back explicitly (offset* omits
+   * it), preserving "a part-way drag opens from where the thumb actually is".
    */
   function measureOrigin(fallback: HTMLElement): ThemeOrigin {
     const el = originRef?.current ?? fallback;
-    const rect = el.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const header = el.closest("header");
+    if (!header) {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+    let ox = 0;
+    let oy = 0;
+    let node: HTMLElement | null = el;
+    while (node && node !== header) {
+      ox += node.offsetLeft;
+      oy += node.offsetTop;
+      node = node.offsetParent as HTMLElement | null;
+    }
+    const headerRect = header.getBoundingClientRect();
+    // The knob's own `x` transform: `knobX = useTransform(darkness, [0,1], [0,
+    // KNOB_TRAVEL_PX])`, mirrored here since offset* cannot see it.
+    const knobSelfShiftX = clampUnit(darkness.get()) * KNOB_TRAVEL_PX;
+    return {
+      x: headerRect.left + ox + knobSelfShiftX + el.offsetWidth / 2,
+      y: headerRect.top + oy + el.offsetHeight / 2,
+    };
   }
 
   const draggingRef = useRef(false);

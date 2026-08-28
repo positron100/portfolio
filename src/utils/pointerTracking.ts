@@ -31,7 +31,7 @@
  * form fields, card drags and the theme toggle all behave exactly as if this
  * were not here.
  */
-export function trackPointerPosition(onMove: (x: number, y: number) => void): () => void {
+export function trackPointerPosition(onMove: (x: number, y: number, t: number) => void): () => void {
   function fromPointer(event: PointerEvent) {
     // A touch fires `pointermove` *and* `touchmove` for the same finger
     // sample, and there are two subscribers (the avatar's position loop and
@@ -41,14 +41,20 @@ export function trackPointerPosition(onMove: (x: number, y: number) => void): ()
     // are therefore for mouse and pen only, which halves the per-sample work
     // on a phone and changes nothing on a desktop.
     if (event.pointerType === "touch") return;
-    onMove(event.clientX, event.clientY);
+    onMove(event.clientX, event.clientY, event.timeStamp);
   }
 
   // A tap is a down and an up with no movement between them, so the down has
   // to count too — otherwise a phone could only steer by dragging.
+  //
+  // `event.timeStamp` is forwarded so consumers can derive finger velocity
+  // between samples. It is the real event time (same clock as
+  // `performance.now()` / the rAF timestamp), which matters because while the
+  // page is scrolling the browser delivers these handlers in batches — the
+  // handler-run time would clump, `event.timeStamp` does not.
   function fromTouch(event: TouchEvent) {
     const touch = event.touches[0];
-    if (touch) onMove(touch.clientX, touch.clientY);
+    if (touch) onMove(touch.clientX, touch.clientY, event.timeStamp);
   }
 
   const options = { passive: true } as const;

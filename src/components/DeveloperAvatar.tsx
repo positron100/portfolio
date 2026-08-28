@@ -49,8 +49,50 @@ const TOUCH_FOLLOW = 0.94;
 /** Cap on the opening screen lean, in px each way. */
 const INTRO_LEAN_PX = 46;
 
+/**
+ * Velocity extrapolation for the touch follow target.
+ *
+ * On a phone the finger is only sampled at ~4Hz while the page is scrolling:
+ * Chrome throttles passive `touchmove` delivery during an active scroll, and
+ * `pointermove` is cancelled outright the moment the scroll gesture is
+ * claimed (measured on a physical Oppo — gap p50 ~200ms, p90 ~320ms).
+ * `TouchEvent.getCoalescedEvents()` does not exist there, so the intermediate
+ * positions cannot be read and are synthesised instead: between real samples
+ * the target coasts along the last measured finger velocity, which decays so
+ * it settles when the finger stops, and is bounded so one late or abnormal
+ * sample can never fling the avatar across the screen.
+ *
+ * This only improves the *target* the follow loop chases. The 55ms smoothing
+ * (`TOUCH_SMOOTHING_TAU_MS`) that actually moves the avatar toward that
+ * target is untouched, so a corrected prediction is eased into like any other
+ * target change — the avatar itself never snaps.
+ */
+/** Max lead of the predicted target over the last real sample, px. Bridges a
+ * ~200ms gap at moderate speed; a multi-second stale gap is clamped to this. */
+const TOUCH_PREDICT_MAX_PX = 64;
+/** Time constant for the predicted velocity decaying to zero, ms. ~13% left
+ * after 180ms (about one sample gap), so an un-refreshed prediction coasts
+ * briefly then stops on its own. */
+const TOUCH_VEL_DECAY_TAU_MS = 90;
+/** Per-sample smoothing of the measured velocity. Halves a hard reversal, so
+ * a direction change slows the prediction rather than overshooting. */
+const TOUCH_VEL_EMA = 0.5;
+/** Ceiling on measured finger speed, px/ms (~3000px/s; a fast flick is ~2000).
+ * Caps an abnormal Δposition/Δtime from a delayed event. */
+const TOUCH_VEL_MAX_PX_PER_MS = 3;
+/** Ignore sample gaps shorter than this, ms — sub-frame event clumping makes
+ * px/ms meaningless. */
+const TOUCH_SAMPLE_MIN_MS = 6;
+/** Beyond this gap, ms, the finger path is unknowable — zero the velocity
+ * rather than extrapolate across it. */
+const TOUCH_SAMPLE_GAP_RESET_MS = 320;
+
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
+}
+
+function clamp(v: number, lo: number, hi: number) {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /**
@@ -229,14 +271,48 @@ export function DeveloperAvatar({
     if (!isDesktop || reduceMotion || !introDone || modalOpen) return;
 
     const pointerFine = window.matchMedia("(pointer: fine)").matches;
+    // A mouse delivers a sample every frame; only touch is starved during a
+    // scroll and needs the predicted target. See the constants above.
+    const predict = !pointerFine;
+
+    // Predicted finger target and its decaying velocity (px, px/ms), plus the
+    // last real sample. Plain closure state, exactly like `lastTime`/`scrollY`
+    // below — no React state, no refs, no layout reads.
+    const predicted = { x: 0, y: 0 };
+    const vel = { x: 0, y: 0 };
+    let sampleT: number | null = null;
+    let sampleX = 0;
+    let sampleY = 0;
+
     // Pointer *and* touch, via the shared subscription — `pointermove` alone
     // stops arriving the instant a touch becomes a scroll, which is what made
     // the avatar look like it was reacting to the last touch rather than
     // following the finger. See `pointerTracking.ts`.
-    const untrack = trackPointerPosition((px, py) => {
+    const untrack = trackPointerPosition((px, py, t) => {
       pointerRef.current.x = px;
       pointerRef.current.y = py;
       hasPointed.current = true;
+      if (!predict) return;
+      if (sampleT !== null) {
+        const gap = t - sampleT;
+        if (gap >= TOUCH_SAMPLE_MIN_MS && gap <= TOUCH_SAMPLE_GAP_RESET_MS) {
+          const vx = clamp((px - sampleX) / gap, -TOUCH_VEL_MAX_PX_PER_MS, TOUCH_VEL_MAX_PX_PER_MS);
+          const vy = clamp((py - sampleY) / gap, -TOUCH_VEL_MAX_PX_PER_MS, TOUCH_VEL_MAX_PX_PER_MS);
+          vel.x = lerp(vel.x, vx, TOUCH_VEL_EMA);
+          vel.y = lerp(vel.y, vy, TOUCH_VEL_EMA);
+        } else {
+          // Sub-frame clump, or a gap too long to trust — don't extrapolate.
+          vel.x = 0;
+          vel.y = 0;
+        }
+      }
+      sampleT = t;
+      sampleX = px;
+      sampleY = py;
+      // Immediate correction to the newest real position. This jumps the
+      // *target*, not the avatar — the 55ms smoothing eases the avatar to it.
+      predicted.x = px;
+      predicted.y = py;
     });
 
     let raf = 0;
@@ -302,8 +378,30 @@ export function DeveloperAvatar({
       // there - no snap, no return.
       const follow = hasPointed.current ? (pointerFine ? heroProgress : TOUCH_FOLLOW) : 0;
 
-      const targetCenterX = lerp(currentDock.x, pointerRef.current.x, follow);
-      const targetCenterY = lerp(currentDock.y, pointerRef.current.y, follow);
+      let fingerX = pointerRef.current.x;
+      let fingerY = pointerRef.current.y;
+      if (predict && hasPointed.current && sampleT !== null) {
+        // Coast the target along the decaying measured velocity, then clamp
+        // its lead over the last real sample. `dt` is the real clamped frame
+        // time, so this is frame-rate independent like the smoothing below.
+        predicted.x += vel.x * dt;
+        predicted.y += vel.y * dt;
+        const decay = Math.exp(-dt / TOUCH_VEL_DECAY_TAU_MS);
+        vel.x *= decay;
+        vel.y *= decay;
+        const leadX = predicted.x - sampleX;
+        const leadY = predicted.y - sampleY;
+        const lead = Math.hypot(leadX, leadY);
+        if (lead > TOUCH_PREDICT_MAX_PX) {
+          predicted.x = sampleX + (leadX / lead) * TOUCH_PREDICT_MAX_PX;
+          predicted.y = sampleY + (leadY / lead) * TOUCH_PREDICT_MAX_PX;
+        }
+        fingerX = predicted.x;
+        fingerY = predicted.y;
+      }
+
+      const targetCenterX = lerp(currentDock.x, fingerX, follow);
+      const targetCenterY = lerp(currentDock.y, fingerY, follow);
       const targetScale = lerp(1, COMPANION_SCALE, heroProgress);
       const targetX = targetCenterX - currentSize / 2;
       const targetY = targetCenterY - currentSize / 2;

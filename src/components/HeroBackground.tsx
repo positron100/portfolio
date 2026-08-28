@@ -169,7 +169,20 @@ export function HeroBackground() {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
 
-    const themeObserver = new MutationObserver(readColors);
+    // Deferred one frame rather than read in the observer's microtask. That
+    // microtask fires immediately after the `data-theme` flip, while style is
+    // invalidated, so `getComputedStyle(document.documentElement)` inside
+    // `readColors` forces the whole document's style recalc synchronously —
+    // on top of the recalc the browser already does for the theme reveal.
+    // Measured at ~172ms on a physical Oppo (the ForcedReflow insight named
+    // this exact call). By the next frame that recalc has happened anyway, so
+    // this becomes a clean read. The accent only feeds a canvas repaint, and
+    // a one-frame lag in it during a theme change is invisible.
+    let themeReadFrame = 0;
+    const themeObserver = new MutationObserver(() => {
+      cancelAnimationFrame(themeReadFrame);
+      themeReadFrame = requestAnimationFrame(readColors);
+    });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     if (!reduceMotion) {
@@ -185,6 +198,7 @@ export function HeroBackground() {
     return () => {
       running = false;
       cancelAnimationFrame(animationFrame);
+      cancelAnimationFrame(themeReadFrame);
       resizeObserver.disconnect();
       themeObserver.disconnect();
       visibilityObserver.disconnect();
