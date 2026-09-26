@@ -105,29 +105,17 @@ export function Hero() {
               whileTap={{ scale: 0.96 }}
               whileHover={{ y: -2 }}
               transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className="rounded-full border border-border px-6 py-3 text-sm font-semibold text-fg hover:border-border-strong hover:bg-bg-subtle"
+              className="relative overflow-hidden rounded-full border border-border px-6 py-3 text-sm font-semibold text-fg hover:border-border-strong hover:bg-bg-subtle"
             >
               Get In Touch
+              {/* Same slow diagonal swipe as the contact form's send button (see .cp-swipe). */}
+              <span aria-hidden="true" className="cp-swipe" data-complete="false">
+                <span className="cp-swipe__inner">Get In Touch</span>
+              </span>
             </motion.button>
           </Magnetic>
         </motion.div>
       </motion.div>
-
-      <motion.button
-        type="button"
-        onClick={() => scrollToSection("about")}
-        aria-label="Scroll to About section"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.6 }}
-        style={reduceMotion ? undefined : { opacity: contentOpacity }}
-        className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-2 text-fg-faint sm:flex"
-      >
-        <span className="font-mono text-[10px] tracking-widest uppercase">Scroll</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <path d="M12 4v16M6 14l6 6 6-6" />
-        </svg>
-      </motion.button>
     </section>
   );
 }

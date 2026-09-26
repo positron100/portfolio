@@ -1,6 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState, type MouseEvent } from "react";
 import type { Project } from "@/types";
+import { useRepoRedirect } from "@/hooks/useRepoRedirect";
+import { liveProjects } from "@/data/liveProjects";
+import { ProjectViewControl } from "@/components/ProjectViewControl";
 import { projectLayoutId } from "@/utils/projectLayoutId";
 
 interface ProjectCardProps {
@@ -10,6 +13,7 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, onOpen }: ProjectCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const repo = useRepoRedirect(project.repoUrl ?? "");
 
   function handlePointerMove(event: MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -123,7 +127,7 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
         )}
       </AnimatePresence>
 
-      <div className="relative z-10 mt-5 flex items-center justify-between gap-3">
+      <div className="relative z-10 mt-5 flex flex-col gap-3">
         <span className="pointer-events-none inline-flex items-center gap-1.5 text-sm font-medium text-fg transition-transform group-hover:translate-x-1">
           View case study
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -131,21 +135,34 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
           </svg>
         </span>
 
-        {project.repoUrl && (
+        {(project.repoUrl || liveProjects[project.id]) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-1 gap-y-2">
+        {project.repoUrl ? (
           <a
+            ref={(el) => {
+              repo.ref.current = el;
+            }}
             href={project.repoUrl}
-            target="_blank"
             rel="noreferrer noopener"
             // Stops the click reaching the card underneath — without this the
             // repo would open *and* the modal would expand behind it.
-            onClick={(event) => event.stopPropagation()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 font-mono text-[11px] text-fg-muted transition-colors hover:border-border-strong hover:bg-bg-subtle hover:text-fg"
+            onClick={(event) => {
+              event.stopPropagation();
+              repo.onClick(event);
+            }}
+            className="cp-attn cp-attn--mono relative inline-flex items-center gap-1.5 min-h-8 rounded-full border px-3 py-1 font-mono text-[11px] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
             </svg>
             GitHub Repo
           </a>
+        ) : (
+          <span />
+        )}
+        {repo.modal}
+        <ProjectViewControl projectId={project.id} />
+        </div>
         )}
       </div>
     </motion.div>

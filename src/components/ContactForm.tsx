@@ -427,7 +427,7 @@ export function ContactForm({ onFieldFocus }: ContactFormProps) {
                       whileTap={isSubmitting ? undefined : press.whileTap}
                       transition={press.transition}
                       className={cn(
-                        "inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold",
+                        "relative inline-flex items-center gap-2 overflow-hidden rounded-full px-6 py-3 text-sm font-semibold",
                         "transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-70",
                         // Never actually disabled while the letter is
                         // incomplete: the validation messages are the
@@ -441,6 +441,15 @@ export function ContactForm({ onFieldFocus }: ContactFormProps) {
                     >
                       <SendIcon />
                       {isSubmitting ? "Sending…" : "Seal & Send"}
+                      {/* Slow swipe: an accent stripe crosses the button and the label
+                          inverts inside it (a counter-moving copy of the label, clipped
+                          to the stripe). Pure CSS; see .cp-swipe in index.css. */}
+                      <span aria-hidden="true" className="cp-swipe" data-complete={written === 3}>
+                        <span className="cp-swipe__inner">
+                          <SendIcon />
+                          {isSubmitting ? "Sending…" : "Seal & Send"}
+                        </span>
+                      </span>
                     </motion.button>
                   </Magnetic>
                 </div>

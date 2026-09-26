@@ -319,3 +319,188 @@ html[data-theme-transition="to-light"]::view-transition-new(root) {
 .modal-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* Preview / full-view loader (spoke ring). Top level, not @theme, so the
+   keyframes survive Tailwind's tree-shake; markup is built in utils/loaderMarkup.ts. */
+.cor { --dur: 2.2s; --n: 24; color: #131316; }
+:root[data-theme="dark"] .cor { color: #f5f5f7; }
+.cor-spoke { transform-box: view-box; transform-origin: center; transform: rotate(var(--a)); }
+.cor-tip {
+  fill: currentColor;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleY(.26);
+  opacity: .24;
+  animation: cor-swell var(--dur) ease-in-out infinite;
+  animation-delay: calc(var(--i) * var(--dur) / var(--n) * -1);
+}
+.cor-hub { stroke: currentColor; stroke-width: 1; opacity: .22; }
+@keyframes cor-swell {
+  0%, 100% { transform: scaleY(.26); opacity: .24; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cor-tip { animation: none; transform: scaleY(var(--rest)); opacity: calc(.22 + var(--rest) * .7); }
+}
+
+/* Second loader style (dot-grid ripple). Same placement rules as `.cor` above. */
+.ht { --dur: 2.8s; color: #131316; }
+:root[data-theme="dark"] .ht { color: #f5f5f7; }
+.ht-base { opacity: .26; }
+.ht-rim { stroke: currentColor; stroke-width: 1; opacity: .14; }
+.ht-wave { animation: ht-ripple var(--dur) linear infinite; }
+.ht-late { animation-delay: calc(var(--dur) / -2); }
+@keyframes ht-ripple {
+  0% { r: 0px; opacity: 0; }
+  14% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { r: 38px; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-wave { animation: none; r: 17px; opacity: 1; }
+  .ht-late { display: none; }
+}
+
+/* Preview loading shell: an indeterminate activity sweep (no percentage is
+   claimed — the app's load progress isn't observable cross-origin). */
+.cp-activity { animation: cp-activity 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes cp-activity {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-activity { animation: none; transform: translateX(120%); }
+}
+
+/* Preview scroll hints: the arrow travels through its chip and is transparent
+   at both ends of the loop, so there is no visible reset. */
+.cp-hint-y { animation: cp-hint-y 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.cp-hint-x { animation: cp-hint-x 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes cp-hint-y {
+  0% { transform: translateY(-11px); opacity: 0; }
+  30%, 70% { opacity: 0.85; }
+  100% { transform: translateY(11px); opacity: 0; }
+}
+@keyframes cp-hint-x {
+  0% { transform: translateX(-11px); opacity: 0; }
+  30%, 70% { opacity: 0.85; }
+  100% { transform: translateX(11px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-hint-y, .cp-hint-x { animation: none; opacity: 0.7; }
+}
+
+/* "View Project" attention effect: a bright arc of the accent orbits the pill's
+   border, and a soft glow breathes on the side the arc currently occupies — it
+   trails the arc round the pill. Both read one angle (--cp-a), animated on the
+   pill so the ring and the glow can never drift apart; --cp-k breathes the
+   glow's reach and strength. Idle only, keeps running on hover, static under reduced
+   motion. Unlayered so the border tint beats the utilities. */
+@property --cp-a { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+@property --cp-k { syntax: "<number>"; inherits: true; initial-value: 0.6; }
+.cp-attn {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* Glow offset points at the arc's tail (head minus its ~100deg span), so the
+     glow trails behind the bright head instead of leading it. */
+  box-shadow:
+    calc(sin(var(--cp-a) - 95deg) * 8px * var(--cp-k)) calc(cos(var(--cp-a) - 95deg) * -8px * var(--cp-k))
+      calc(10px + 8px * var(--cp-k)) -1px color-mix(in srgb, var(--accent) calc(var(--cp-k) * 55%), transparent);
+  animation: cp-orbit 2.8s linear infinite, cp-breathe 3.2s ease-in-out infinite;
+}
+.cp-attn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(from var(--cp-a), transparent 0 72%, var(--accent) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.cp-attn:hover {
+  border-color: var(--accent);
+}
+/* Close buttons: same orbit + trailing glow in red (overrides the accent locally). */
+.cp-attn--red { --accent: #ef4444; }
+/* Source-code links: monochrome — black in light mode, white in dark. */
+.cp-attn--mono { --accent: #18181b; }
+[data-theme="dark"] .cp-attn--mono { --accent: #fafafa; }
+[data-theme="dark"] .cp-attn--red { --accent: #f87171; }
+@keyframes cp-orbit { to { --cp-a: 360deg; } }
+@keyframes cp-breathe {
+  0%, 100% { --cp-k: 0.6; }
+  50% { --cp-k: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-attn { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .cp-attn::before { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+}
+
+/* Contact "Seal & Send" swipe. A stripe (28% of the button) crosses it slowly, then
+   rests. Inside the stripe a copy of the label sits at the button's full width and
+   moves opposite to it, so the label reads in place while its colours invert.
+   Distances are in stripe-widths: 1/0.28 = 357.14% to cross the button, and the
+   inner copy moves -28% per stripe-width. Incomplete letter: accent stripe, accent-fg
+   (black in dark, white in light) label. Complete: the stripe is --accent-strong. */
+.cp-swipe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28%;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--cp-swipe-bg, var(--accent));
+  transform: translateX(-130%) skewX(-18deg);
+  animation: cp-swipe 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.cp-swipe[data-complete="true"] { --cp-swipe-bg: var(--accent-strong); }
+.cp-swipe__inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 357.14%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  color: var(--accent-fg);
+  transform: translateX(36.4%) skewX(18deg);
+  animation: cp-swipe-inner 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+button:disabled .cp-swipe { display: none; }
+/* The stripe is skewed -18deg and the inner label counter-skewed +18deg about the
+   same mid-height line, so the stripe's edges lean while the label stays upright.
+   The range is -1.3 -> 3.7 stripe-widths (1.3 clears the slant off-screen). */
+@keyframes cp-swipe {
+  0% { transform: translateX(-130%) skewX(-18deg); }
+  62%, 100% { transform: translateX(370%) skewX(-18deg); }
+}
+@keyframes cp-swipe-inner {
+  0% { transform: translateX(36.4%) skewX(18deg); }
+  62%, 100% { transform: translateX(-103.6%) skewX(18deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-swipe { display: none; }
+}
+
+/* Page scrollbar removed (scrolling stays native); ScrollDownHint is the affordance. */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
+
+/* Down arrow: a short double tap downward every few seconds. */
+.cp-nudge-down { animation: cp-nudge-down 3.2s ease-in-out infinite; }
+@keyframes cp-nudge-down {
+  0%, 55%, 100% { translate: 0 0; }
+  65% { translate: 0 5px; }
+  75% { translate: 0 0; }
+  85% { translate: 0 4px; }
+  92% { translate: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-nudge-down { animation: none; }
+}

@@ -2,6 +2,7 @@ import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
 import { Footer } from "@/components/Footer";
 import { IntroOverlay } from "@/components/IntroOverlay";
+import { ScrollDownHint } from "@/components/ScrollDownHint";
 import { DeveloperAvatar } from "@/components/DeveloperAvatar";
 import { useIntroSequence } from "@/hooks/useIntroSequence";
 import { About } from "@/sections/About";
@@ -50,6 +51,7 @@ function App() {
         </main>
         <Footer />
       </div>
+      <ScrollDownHint enabled={introDone} />
       <DeveloperAvatar introElapsed={introElapsed} introDone={introDone} />
     </>
   );

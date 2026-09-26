@@ -93,7 +93,7 @@ export function ProjectDetailsModal({ project, onClose }: ProjectDetailsModalPro
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="absolute top-5 right-5 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-bg-elevated text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+              className="cp-attn cp-attn--red absolute top-5 right-5 z-20 flex h-9 w-9 items-center justify-center rounded-full border bg-bg-elevated text-fg-muted transition-colors hover:text-fg"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M18 6 6 18M6 6l12 12" />
