@@ -9,7 +9,7 @@ export function Architecture() {
   const { sectionRef, style } = useConnectedScroll();
 
   return (
-    <section ref={sectionRef} id="architecture" className="border-b border-border py-20 sm:py-24">
+    <section ref={sectionRef} id="architecture" className="overflow-x-clip border-b border-border py-20 sm:py-24">
       <motion.div style={style} className="container-px mx-auto max-w-6xl">
         <SectionBigTitle
           bigWord="Architecture"

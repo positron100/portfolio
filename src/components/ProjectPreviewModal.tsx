@@ -16,10 +16,6 @@ import { duration, ease, scaleTap } from "@/utils/motion";
 const MORPH_OPEN = { duration: 0.9, ease: [0.65, 0, 0.35, 1] } as const;
 const MORPH_CLOSE = { duration: 0.75, ease: [0.65, 0, 0.35, 1] } as const;
 
-/** Width the embedded app is laid out at when the window is too narrow for it. */
-const DESKTOP_WIDTH = 1024;
-/** Floor on the fit-to-width scale; narrower windows pan sideways instead of shrinking further. */
-const MIN_SCALE = 0.5;
 const SLOW_LOAD_MS = 15000;
 const SLOW_HINT_MS = 4000;
 /** Cap on the origin corner radius; a pill takes its own half-height. */
@@ -270,7 +266,7 @@ function Window({
   // be read from here; an app that opts in (framed + ?cp-mode) posts
   // `{ type: "cp-scroll", down, right }` — booleans "more content below /
   // to the right" — and we accept it only from that iframe's window and origin.
-  // The pan container around a scaled desktop layout IS ours, so it is measured
+  // The pan container (only relevant if content ever overflows it) is ours, so it is measured
   // directly. Apps that don't post simply show no arrow.
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [hint, setHint] = useState({ down: false, right: false });
@@ -305,8 +301,6 @@ function Window({
   const onPan = useCallback((e: UIEvent<HTMLDivElement>) => measurePan(e.currentTarget), [measurePan]);
   useEffect(() => measurePan(node), [node, size, measurePan]);
 
-  const scaled = size.w < DESKTOP_WIDTH;
-  const scale = scaled ? Math.max(size.w / DESKTOP_WIDTH, MIN_SCALE) : 1;
   const host = project.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const f = geo.final;
 
@@ -428,16 +422,11 @@ function Window({
               className="relative h-full overflow-x-auto overflow-y-hidden rounded-2xl border border-border/70 bg-bg-subtle/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               {status !== "failed" && size.w > 0 && (
-                <div style={{ width: scaled ? DESKTOP_WIDTH * scale : size.w, height: size.h }}>
-                  <div
-                    style={{
-                      width: scaled ? DESKTOP_WIDTH : size.w,
-                      height: size.h / scale,
-                      transform: scaled ? `scale(${scale})` : undefined,
-                      transformOrigin: "top left",
-                      overflow: "hidden",
-                    }}
-                  >
+                // The iframe is exactly the viewport's size: no fixed desktop canvas, no
+                // scaling. The app therefore sees a real window of this width and its own
+                // responsive breakpoints decide the layout (mobile on a phone).
+                <div style={{ width: size.w, height: size.h }}>
+                  <div style={{ width: size.w, height: size.h, overflow: "hidden" }}>
                     <iframe
                       ref={iframeRef}
                       title={`${project.name} live preview`}

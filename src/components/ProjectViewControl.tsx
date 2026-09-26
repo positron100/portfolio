@@ -70,6 +70,10 @@ export function ProjectViewControl({
   // True from choosing Preview until the window has folded back into the pill.
   const [presented, setPresented] = useState(false);
   const [active, setActive] = useState<Choice>("preview");
+  // The row only holds the expanded width while expanded (and while collapsing).
+  // Collapsed, the wrapper is just the button, so at narrow widths it sits on the
+  // same line as its neighbour instead of wrapping under it, unaligned.
+  const [reserve, setReserve] = useState(false);
   const [dims, setDims] = useState<{ c: number; e: number } | null>(null);
   const pillRef = useRef<HTMLDivElement>(null);
   const openBtnRef = useRef<HTMLButtonElement>(null);
@@ -131,6 +135,7 @@ export function ProjectViewControl({
   if (!project) return null;
 
   function expand() {
+    setReserve(true);
     magnetic.onMouseLeave(); // drop the cached (collapsed) rect; re-measured on next move
     warmOrigin(project.url);
     setActive("preview");
@@ -175,9 +180,9 @@ export function ProjectViewControl({
       aria-label={`${project.name} project actions`}
       onKeyDown={open ? onKey : undefined}
       className={cn("flex shrink-0 items-center", align === "end" ? "justify-end" : "justify-start", className)}
-      // Reserve the expanded width (pill + detached ×) from the start so
-      // growth never reflows the row.
-      style={dims ? { width: dims.e + GAP + s.px } : undefined}
+      // While open, reserve the expanded width (pill + detached ×) so growth never
+      // reflows the row; released once the collapse has finished.
+      style={dims ? { width: reserve ? dims.e + GAP + s.px : dims.c } : undefined}
     >
       <motion.div
         ref={(el: HTMLDivElement | null) => {
@@ -186,6 +191,9 @@ export function ProjectViewControl({
         }}
         initial={false}
         animate={dims ? { width: open ? dims.e : dims.c } : undefined}
+        onAnimationComplete={() => {
+          if (!open) setReserve(false);
+        }}
         transition={widthT}
         style={magnetic.style}
         onMouseMove={magnetic.onMouseMove}
