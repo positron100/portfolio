@@ -137,7 +137,12 @@ function Window({
   mode: "preview" | "redirect";
 }) {
   const reduceMotion = useReducedMotion();
-  const redirect = mode === "redirect";
+  // Starts matching the entry mode, but "Open Full View" from inside a live
+  // Preview promotes this to true mid-flight — same window, same morph
+  // machinery, just re-run from the current box out to the fullscreen one
+  // instead of jumping straight to a fresh redirect-mode window.
+  const [fullView, setFullView] = useState(mode === "redirect");
+  const redirect = fullView;
   const containerRef = useModalBehavior(!closing, onClose);
   // Full View is drawn toward the cursor (same pull as the site's links);
   // Close is pushed away from it — the hook's offset simply flips sign.
@@ -159,12 +164,22 @@ function Window({
   const navTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const go = useCallback(() => {
     setLeaving(true);
-    navTimer.current = setTimeout(() => window.location.assign(src), reduceMotion ? 0 : mode === "redirect" ? 180 : 320);
-  }, [src, reduceMotion, mode]);
+    navTimer.current = setTimeout(() => window.location.assign(src), reduceMotion ? 0 : redirect ? 180 : 320);
+  }, [src, reduceMotion, redirect]);
   // Seeded from the final geometry (padding + border + chrome) so the iframe
   // mounts in the very first commit instead of waiting for a ResizeObserver frame.
   const [size, setSize] = useState({ w: geo.final.w - 18, h: geo.final.h - CHROME_H - 10 });
   const [node, setNode] = useState<HTMLDivElement | null>(null);
+
+  // `go`'s identity changes with `redirect` (it needs to, for the leave delay),
+  // but this effect must only re-run for an actual new open (`geo` changing) —
+  // not every time `redirect` flips, which is exactly what `promoteToFull`
+  // does to the SAME open window. A stale `go` in this deps array reruns this
+  // effect on promotion, stomping the refs it just set and racing its tween.
+  const goRef = useRef(go);
+  useEffect(() => {
+    goRef.current = go;
+  });
 
   useEffect(() => {
     if (closing) return;
@@ -174,13 +189,13 @@ function Window({
     const controls = animate(p, 1, reduceMotion ? { duration: 0 } : MORPH_OPEN);
     // Full View leaves as soon as the window has finished unfolding.
     controls.then(() => {
-      if (!cancelled && mode === "redirect") go();
+      if (!cancelled && mode === "redirect") goRef.current();
     });
     return () => {
       cancelled = true;
       controls.stop();
     };
-  }, [closing, geo, p, reduceMotion, mode, go]);
+  }, [closing, geo, p, reduceMotion, mode]);
 
   useEffect(() => {
     if (!closing) return;
@@ -196,18 +211,30 @@ function Window({
 
   useEffect(() => {
     const onResize = () => {
-      finalRef.current = finalBox(mode === "redirect");
+      finalRef.current = finalBox(redirect);
       tick.set(tick.get() + 1);
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [tick, mode]);
+  }, [tick, redirect]);
 
   const box = useCallback((t: number): Box => {
     const o = originRef.current;
     const f = finalRef.current;
     return { x: lerp(o.x, f.x, t), y: lerp(o.y, f.y, t), w: lerp(o.w, f.w, t), h: lerp(o.h, f.h, t) };
   }, []);
+  // "Open Full View" from inside a live Preview: re-run the same open morph,
+  // from the window's current box (not the origin pill) out to the fullscreen
+  // one, then leave exactly like a window opened directly in Full View.
+  const promoteToFull = useCallback(() => {
+    if (redirect) return;
+    originRef.current = box(p.get());
+    finalRef.current = finalBox(true);
+    tick.set(tick.get() + 1);
+    setFullView(true);
+    p.set(reduceMotion ? 1 : 0);
+    animate(p, 1, reduceMotion ? { duration: 0 } : MORPH_OPEN).then(go);
+  }, [redirect, box, p, tick, reduceMotion, go]);
   const left = useTransform([p, tick], ([t]: number[]) => box(t).x);
   const top = useTransform([p, tick], ([t]: number[]) => box(t).y);
   const width = useTransform([p, tick], ([t]: number[]) => box(t).w);
@@ -239,6 +266,12 @@ function Window({
   // shift the content the opposite way so it never travels with the shell.
   const innerLeft = useTransform([p, tick], ([t]: number[]) => finalRef.current.x - box(t).x);
   const innerTop = useTransform([p, tick], ([t]: number[]) => finalRef.current.y - box(t).y);
+  // Content lays out at the final size and is merely revealed (see the class
+  // doc comment) — but that final size itself must follow finalRef, not the
+  // frozen geometry from open, or promoting to Full View mid-preview would
+  // grow the shell to fullscreen around content still boxed at preview size.
+  const contentW = useTransform(tick, () => finalRef.current.w);
+  const contentH = useTransform(tick, () => finalRef.current.h);
   const chromeOpacity = useTransform(p, [0.3, 0.7], [0, 1]);
   const viewportOpacity = useTransform(p, [0.2, 0.6], [0, 1]);
   const scrimOpacity = useTransform(p, [0, 1], [0, 1]);
@@ -302,7 +335,6 @@ function Window({
   useEffect(() => measurePan(node), [node, size, measurePan]);
 
   const host = project.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  const f = geo.final;
 
   return (
     <div className="fixed inset-0 z-[70]">
@@ -346,7 +378,7 @@ function Window({
           style={{ opacity: redirect ? 0 : glass }}
           className="pointer-events-none absolute inset-0 bg-gradient-to-br from-accent/[0.07] via-transparent to-accent-secondary/[0.06]"
         />
-        <motion.div style={{ left: innerLeft, top: innerTop, width: f.w, height: f.h }} className="absolute flex flex-col">
+        <motion.div style={{ left: innerLeft, top: innerTop, width: contentW, height: contentH }} className="absolute flex flex-col">
           {redirect ? (
             <motion.div style={{ opacity: viewportOpacity }} className="grid h-full place-items-center">
               <div className="flex flex-col items-center gap-3 text-center">
@@ -391,7 +423,7 @@ function Window({
               style={fullMagnet.style}
               whileTap={scaleTap}
               type="button"
-              onClick={go}
+              onClick={promoteToFull}
               className="cp-attn relative inline-flex min-h-9 items-center rounded-full border bg-fg/[0.04] px-3.5 text-xs font-medium text-fg transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Open Full View
@@ -476,7 +508,7 @@ function Window({
                       </p>
                       <button
                         type="button"
-                        onClick={go}
+                        onClick={promoteToFull}
                         className="mt-5 inline-flex min-h-10 items-center rounded-full bg-accent px-5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       >
                         Open Full View

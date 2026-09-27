@@ -13,7 +13,11 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, onOpen }: ProjectCardProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const repo = useRepoRedirect(project.repoUrl ?? "");
+  // Two independent instances (not two refs on one hook) — mobile and the
+  // compact row each need their own DOM anchor and redirect-surface state,
+  // since only one of the two is ever visible (see the stacked/row split below).
+  const repoStack = useRepoRedirect(project.repoUrl ?? "");
+  const repoRow = useRepoRedirect(project.repoUrl ?? "");
 
   function handlePointerMove(event: MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -136,11 +140,40 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
         </span>
 
         {(project.repoUrl || liveProjects[project.id]) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-1 gap-y-2">
+        <>
+        {/* Mobile: stacked, same larger treatment as the Experience section's
+            source-code link + control — there's no room for both side by side
+            once the pill expands, so they don't try to share a row here. */}
+        <div className="flex flex-col items-start gap-3 sm:hidden">
+        {project.repoUrl && (
+          <a
+            ref={(el) => {
+              repoStack.ref.current = el;
+            }}
+            href={project.repoUrl}
+            rel="noreferrer noopener"
+            onClick={(event) => {
+              event.stopPropagation();
+              repoStack.onClick(event);
+            }}
+            className="cp-attn cp-attn--mono relative inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+            GitHub Repo
+          </a>
+        )}
+        {repoStack.modal}
+        <ProjectViewControl projectId={project.id} size="md" align="start" />
+        </div>
+
+        {/* sm and up: the original compact single row. */}
+        <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-1 sm:gap-y-2">
         {project.repoUrl ? (
           <a
             ref={(el) => {
-              repo.ref.current = el;
+              repoRow.ref.current = el;
             }}
             href={project.repoUrl}
             rel="noreferrer noopener"
@@ -148,7 +181,7 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
             // repo would open *and* the modal would expand behind it.
             onClick={(event) => {
               event.stopPropagation();
-              repo.onClick(event);
+              repoRow.onClick(event);
             }}
             className="cp-attn cp-attn--mono relative inline-flex items-center gap-1.5 min-h-8 rounded-full border px-3 py-1 font-mono text-[11px] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
           >
@@ -160,9 +193,10 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
         ) : (
           <span />
         )}
-        {repo.modal}
+        {repoRow.modal}
         <ProjectViewControl projectId={project.id} />
         </div>
+        </>
         )}
       </div>
     </motion.div>

@@ -175,14 +175,19 @@ export function ProjectViewControl({
   const widthT = reduceMotion ? { duration: 0 } : { duration: open ? 0.5 : 0.65, ease: [0.65, 0, 0.35, 1] as const };
 
   return (
-    <div
+    <motion.div
       role="group"
       aria-label={`${project.name} project actions`}
       onKeyDown={open ? onKey : undefined}
       className={cn("flex shrink-0 items-center", align === "end" ? "justify-end" : "justify-start", className)}
       // While open, reserve the expanded width (pill + detached ×) so growth never
-      // reflows the row; released once the collapse has finished.
-      style={dims ? { width: reserve ? dims.e + GAP + s.px : dims.c } : undefined}
+      // reflows the row; released once the collapse has finished. Animated in step
+      // with the pill (not snapped instantly) so a row too narrow to hold it wraps
+      // smoothly exactly when it runs out of room, rather than jumping the moment
+      // the button is pressed.
+      initial={false}
+      animate={dims ? { width: reserve ? dims.e + GAP + s.px : dims.c } : undefined}
+      transition={widthT}
     >
       <motion.div
         ref={(el: HTMLDivElement | null) => {
@@ -310,6 +315,6 @@ export function ProjectViewControl({
       </motion.div>
 
       <ProjectPreviewModal project={project} open={previewOpen} getOrigin={getOrigin} onClose={closePreview} onExited={exited} mode={mode} />
-    </div>
+    </motion.div>
   );
 }
