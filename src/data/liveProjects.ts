@@ -26,4 +26,5 @@ export const liveProjects: Record<string, LiveProject> = {
   cloudeditor: { name: "Compile Palace", ground: { light: "#ffffff", dark: "#020817" }, url: "https://compile-palace.vercel.app/" },
   clock: { name: "Clock", url: "https://positron100.github.io/clock/" },
   cloudbook: { name: "CloudBook", ground: { light: "#f4f1ea", dark: "#121317" }, url: "https://cloud-book-frontend-xi.vercel.app/" },
+  "ipo-gmp-tracker": { name: "IPO GMP Tracker", ground: { light: "#f7f7f5", dark: "#08090b" }, url: "https://ipo-guru-iota.vercel.app/" },
 };

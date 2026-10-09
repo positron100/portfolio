@@ -152,4 +152,27 @@ export const projects: Project[] = [
     technologies: ["React", "Context API", "React Router", "Node.js", "Express", "MongoDB", "JWT", "Bootstrap"],
     repoUrl: "https://github.com/positron100/CloudBook",
   },
+  {
+    id: "ipo-gmp-tracker",
+    name: "IPO GMP Tracker",
+    categories: ["full-stack"],
+    categoryLabel: "Full Stack / Personal",
+    kind: "personal",
+    summary:
+      "A responsive Indian IPO tracker that brings together IPO details, Grey Market Premium (GMP), subscription data, estimated listing metrics and listings in one place.",
+    details: [
+      "Built an Indian IPO tracking platform with a daily GMP overview, a filterable and sortable market board, and a detail page per IPO covering GMP, issue price, estimated listing price, potential gain, timeline and subscription.",
+      "Data flows through a pluggable provider layer with validation and ISR caching, so pages never call a provider directly. Missing values are shown as unavailable rather than zero, and GMP is clearly labelled as unofficial grey-market sentiment.",
+    ],
+    highlights: [
+      "Daily GMP tracking and market overview",
+      "Live, upcoming, awaiting-listing and listed IPOs",
+      "Issue price, estimated listing price and potential gain",
+      "Headline and category-wise subscription with a day-by-day chart",
+      "Interactive filtering and sorting",
+      "Mobile-first responsive UI with fluid transitions and subtle breathing motion",
+    ],
+    technologies: ["Next.js", "React", "TypeScript", "Tailwind CSS", "Framer Motion"],
+    repoUrl: "https://github.com/positron100/ipo-guru",
+  },
 ];
